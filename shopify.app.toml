@@ -2,12 +2,12 @@
 
 client_id = "95e18de12e9140ab572fde0b0604aff2"
 name = "Manca-quote-pipeline"
-application_url = "https://example.com"
+application_url = "https://manca-quote-pipeline.onrender.com/"
 embedded = true
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products,write_metaobjects,write_metaobject_definitions"
+scopes = "read_draft_orders"
 
 [product.metafields.app.demo_info]
 type = "single_line_text_field"
@@ -44,9 +44,21 @@ api_version = "2026-10"
   uri = "/webhooks/app/scopes_update"
   topics = [ "app/scopes_update" ]
 
+  # --- Permessi: il minimo indispensabile ---
+[access_scopes]
+scopes = "read_draft_orders"
+
+# --- Eventi a cui ci sottoscriviamo ---
+# DA AGGIUNGERE al blocco [webhooks] che lo scaffold ha già creato.
+# NON duplicare 'api_version' né il blocco compliance_topics (GDPR) già presenti.
+
+  [[webhooks.subscriptions]]
+  topics = [ "draft_orders/create", "draft_orders/update", "draft_orders/delete" ]
+  uri = "/webhooks/draft-orders"
+  include_fields = [ "id", "status", "total_price", "currency", "created_at", "updated_at", "completed_at", "invoice_sent_at" ]
+
 [auth]
 redirect_urls = [ "https://example.com/api/auth" ]
 
 [build]
-include_config_on_deploy = true
-automatically_update_urls_on_dev = true
+automatically_update_urls_on_dev = false

@@ -32,3 +32,23 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+// prisma/schema.prisma — accanto al model Session esistente
+
+model DraftQuote {
+  id               String    @id                  // GID: gid://shopify/DraftOrder/{id}
+  shop             String                          // quale negozio (isola i dati per merchant)
+  status           String                          // "open" | "invoice_sent" | "completed"
+  totalValue       Decimal   @db.Decimal(12, 2)    // valore del preventivo
+  currency         String
+  shopifyCreatedAt DateTime                         // quando l'ha creato Shopify (non la nostra riga)
+  completedAt      DateTime?                         // valorizzato solo se convertito
+  daysToConvert    Int?                              // giorni creazione → conversione
+  deletedAt        DateTime?                         // valorizzato solo se eliminato
+  rowUpdatedAt     DateTime  @updatedAt              // ultimo tocco della NOSTRA riga
+
+  @@index([shop, status])
+  @@index([shop, deletedAt])
+  @@index([shop, shopifyCreatedAt])
+  @@map("draft_quotes")
+}
