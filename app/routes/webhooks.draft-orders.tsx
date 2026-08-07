@@ -12,6 +12,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // firmato davvero da Shopify, risponde 401 da solo. È la nostra
   // garanzia che il payload non è falsificato.
   const { shop, topic, payload } = await authenticate.webhook(request);
+  console.log(`[webhook draft] topic=${topic} shop=${shop} id=${payload?.id}`);
 
   // Il webhook porta l'id numerico; noi normalizziamo a GID.
   const gid = `gid://shopify/DraftOrder/${payload.id}`;
