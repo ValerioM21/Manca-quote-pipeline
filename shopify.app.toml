@@ -5,6 +5,9 @@ name = "Manca-quote-pipeline"
 application_url = "https://manca-quote-pipeline.onrender.com/"
 embedded = true
 
+[sidekick]
+extensions_summary = "Search and analyze draft-order quote pipeline data: count open quotes, find stale quotes with no customer response for over 7 days, list quotes deleted by the customer, and report the monthly quote-to-order conversion rate."
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_draft_orders"

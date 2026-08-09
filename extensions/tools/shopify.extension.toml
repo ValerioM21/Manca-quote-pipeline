@@ -1,0 +1,15 @@
+api_version = "2025-10"
+
+[[extensions]]
+# Change the merchant-facing name of the extension in locales/en.default.json
+name = "Quote pipeline"
+handle = "tools"
+type = "ui_extension"
+uid = "63785ab5-a64b-e63e-0324-abd529470edaef09846b"
+description = "Search and analyze draft order quotes: list open quotes, find stale quotes with no customer response for over 7 days, list quotes the customer deleted, and report the quote-to-order conversion rate for the current month."
+
+[[extensions.targeting]]
+module = "./src/index.js"
+target = "admin.app.tools.data"
+tools = "./tools.json"
+instructions = "./instructions.md"
