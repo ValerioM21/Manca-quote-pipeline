@@ -30,10 +30,25 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 } */
 
-  // app/routes/api.sidekick.quotes.tsx
-import type { ActionFunctionArgs } from "react-router";
+ // app/routes/api.sidekick.quotes.tsx
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import { getOpenQuotes, getStaleQuotes, getDeletedQuotes } from "../models/quotes.server";
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "https://extensions.shopifycdn.com",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+  "Access-Control-Max-Age": "86400",
+};
+
+// Risponde al preflight OPTIONS (e a qualunque GET/OPTIONS) senza auth.
+export async function loader({ request }: LoaderFunctionArgs) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+  return new Response(null, { status: 405, headers: CORS_HEADERS });
+}
 
 export async function action({ request }: ActionFunctionArgs) {
   const { session, cors } = await authenticate.admin(request);

@@ -2,71 +2,42 @@ import '@shopify/ui-extensions';
 
 //@ts-ignore
 declare module './src/index.js' {
-  interface SearchInput {
+  interface SearchQuotesInput {
     /**
-     * Search query string
+     * Which quotes to return: 'open' (awaiting customer), 'stale' (open and untouched for more than 7 days), or 'deleted' (deleted by the customer).
      */
-    query?: string;
+    filter: 'open' | 'stale' | 'deleted';
     /**
-     * Cursor for pagination - returns elements after this cursor
+     * Maximum number of quotes to include in the list. The total count is always returned regardless of this limit. Defaults to 50.
      */
-    after?: string;
-    /**
-     * Number of results to return (default: 10)
-     */
-    first?: number;
+    limit?: number;
     [k: string]: unknown;
   }
 
-  interface SearchOutput {
-    results?: {
-      /**
-       * Unique identifier for the result
-       */
-      id: string;
-      /**
-       * The type/category of the result
-       */
-      type: string;
-      /**
-       * URL to view or edit the resource
-       */
-      url?: string;
-      /**
-       * Display title for the result
-       */
-      title?: string;
-      [k: string]: unknown;
-    }[];
-    pageInfo?: {
-      /**
-       * Whether there are more results available
-       */
-      hasNextPage?: boolean;
-      /**
-       * Whether there are previous results available
-       */
-      hasPreviousPage?: boolean;
-      /**
-       * Cursor for the first item in results
-       */
-      startCursor?: string;
-      /**
-       * Cursor for the last item in results
-       */
-      endCursor?: string;
-      [k: string]: unknown;
-    };
+  type SearchQuotesOutput = unknown;
+  interface ConversionRateInput {
     [k: string]: unknown;
   }
 
+  type ConversionRateOutput = unknown;
   interface ShopifyTools {
     /**
-     * Search for data from this app's external data source
+     * List draft-order quotes filtered by pipeline state. Use filter 'open' for quotes still awaiting the customer, 'stale' for open quotes with no customer response for more than 7 days, and 'deleted' for quotes the customer deleted. Returns a total count plus each quote's creation date, total value, currency, and age in days, so it also answers 'how many' questions.
      */
     register(
-      name: 'search',
-      handler: (input: SearchInput) => SearchOutput | Promise<SearchOutput>,
+      name: 'search_quotes',
+      handler: (
+        input: SearchQuotesInput,
+      ) => SearchQuotesOutput | Promise<SearchQuotesOutput>,
+    ): () => void;
+    /**
+     * Report the quote-to-order conversion rate for the current calendar month. Returns the number of quotes that converted to orders, the total number of quotes created this month, and the resulting conversion rate as a fraction.
+     */
+    register(
+      name: 'conversion_rate',
+      handler: (
+        input: ConversionRateInput,
+      ) => ConversionRateOutput | Promise<ConversionRateOutput>,
     ): () => void;
   }
 

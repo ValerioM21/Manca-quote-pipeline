@@ -17,12 +17,24 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }));
 } */
 
-  // app/routes/api.sidekick.conversion-rate.tsx
+ // app/routes/api.sidekick.conversion-rate.tsx
 import type { LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import { getConversionRateThisMonth } from "../models/quotes.server";
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "https://extensions.shopifycdn.com",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+  "Access-Control-Max-Age": "86400",
+};
+
 export async function loader({ request }: LoaderFunctionArgs) {
+  // Preflight: rispondi subito, senza auth.
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
   const { session, cors } = await authenticate.admin(request);
   const { shop } = session;
 
