@@ -1,7 +1,7 @@
 ﻿export default function PrivacyPolicy() {
   return (
     <div style={{ maxWidth: "720px", margin: "40px auto", padding: "0 20px", fontFamily: "system-ui, sans-serif", lineHeight: 1.6 }}>
-      <h1>Privacy Policy — Manca: Quote Pipeline Analytics</h1>
+      <h1>Privacy Policy - Manca: Quote Analytics</h1>
       <p><em>Effective date: August 11, 2026</em></p>
 
       <h2>1. Information We Collect</h2>
