@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "95e18de12e9140ab572fde0b0604aff2"
-name = "Manca-quote-pipeline"
+name = "Manca: Quote Analytics"
 application_url = "https://manca-quote-pipeline.onrender.com/"
 embedded = true
 
@@ -29,7 +29,7 @@ api_version = "2026-10"
   include_fields = [ "id", "status", "total_price", "currency", "created_at", "updated_at", "completed_at", "invoice_sent_at" ]
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://manca-quote-pipeline.onrender.com/auth/callback" ]
 
 [build]
 automatically_update_urls_on_dev = false
