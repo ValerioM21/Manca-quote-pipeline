@@ -1,237 +1,100 @@
-# Shopify App Template - React Router
+# Manca: Quote Analytics
 
-This is a template for building a [Shopify app](https://shopify.dev/docs/apps/getting-started) using [React Router](https://reactrouter.com/). It was forked from the [Shopify Remix app template](https://github.com/Shopify/shopify-app-template-remix) and converted to React Router.
+A Shopify app that turns draft-order data into answers merchants can ask **Shopify Sidekick** directly — open quotes, stale quotes, deleted quotes, and month-to-date quote-to-order conversion rate.
 
-Rather than cloning this repo, follow the [Quick Start steps](https://github.com/Shopify/shopify-app-template-react-router#quick-start).
+**Status:** currently in review on the Shopify App Store.
 
-Visit the [`shopify.dev` documentation](https://shopify.dev/docs/api/shopify-app-react-router) for more details on the React Router app package.
+## The problem
 
-## Upgrading from Remix
+Merchants who use draft orders as quotes — B2B, custom orders, wholesale — have no built-in way to see the health of their quote pipeline. Shopify admin doesn't surface "how many quotes are still open", "which ones have gone quiet", or "what's my quote-to-order conversion rate this month" as a native report. Today that means manually filtering and exporting draft orders to find out.
 
-If you have an existing Remix app that you want to upgrade to React Router, please follow the [upgrade guide](https://github.com/Shopify/shopify-app-template-react-router/wiki/Upgrading-from-Remix). Otherwise, please follow the quick start guide below.
+## How it works
 
-## Quick start
+The app listens to `draft_orders/create`, `draft_orders/update` and `draft_orders/delete` webhooks and keeps a denormalized `DraftQuote` table in sync (status, value, currency, timestamps, deletion date, days-to-convert). That data is then exposed two ways:
 
-### Prerequisites
+1. **A dashboard inside the embedded app** — four live metrics rendered with Polaris web components.
+2. **Two authenticated endpoints Shopify Sidekick can call directly** as actions — `POST /api/sidekick/quotes` (filter: `open` / `stale` / `deleted`) and `GET /api/sidekick/conversion-rate`. Sidekick knows when to call them because the app declares an `extensions_summary` in `shopify.app.toml`, in plain language, describing what each action answers.
 
-Before you begin, you'll need to [download and install the Shopify CLI](https://shopify.dev/docs/apps/tools/cli/getting-started) if you haven't already.
+In practice: a merchant can ask Sidekick *"which quotes have gone more than a week without a response?"* and get a real answer pulled live from their own draft-order data.
 
-### Setup
+## Architecture
 
-```shell
-shopify app init --template=https://github.com/Shopify/shopify-app-template-react-router
-```
+| Piece | What it does |
+|---|---|
+| `app/routes/webhooks.draft-orders.tsx` | HMAC-verified webhook handler. Ingests create/update/delete, upserts into `DraftQuote`, computes days-to-convert at the moment a quote completes. |
+| `app/models/quotes.server.ts` | Query layer: open quotes (count + value), monthly conversion rate, stale quotes (>7 days), deleted quotes (last 90 days). |
+| `app/routes/api.sidekick.quotes.tsx` | Sidekick action. Session-token authenticated, CORS scoped to `extensions.shopifycdn.com`, handles its own OPTIONS preflight. |
+| `app/routes/api.sidekick.conversion-rate.tsx` | Sidekick action, same auth/CORS pattern. |
+| `app/routes/app._index.tsx` | Embedded dashboard — same four metrics, rendered for the merchant directly. |
+| `shopify.app.toml` `[sidekick]` | Declares the natural-language summary Sidekick uses to decide when to call the two actions above. |
+| `app/routes/webhooks.compliance.tsx` | The three mandatory GDPR topics, HMAC-verified. |
+| `prisma/` | `DraftQuote` model + session storage (PostgreSQL). |
 
-### Local Development
+## Tech stack
 
-```shell
-shopify app dev
-```
+- **Runtime:** Node.js 20+, TypeScript
+- **Framework:** React Router 7 (`@shopify/shopify-app-react-router`)
+- **UI:** Polaris web components, App Bridge — embedded in Shopify Admin
+- **AI surface:** Shopify Sidekick actions — authenticated endpoints declared in `shopify.app.toml`, called directly by Sidekick
+- **Data:** PostgreSQL via Prisma
+- **Webhooks API:** 2026-10
+- **Access scope:** `read_draft_orders` — nothing else
+- **Hosting:** Render, automatic deploy on push to `main`
 
-Press P to open the URL to your app. Once you click install, you can start development.
+## Design decisions
 
-Local development is powered by [the Shopify CLI](https://shopify.dev/docs/apps/tools/cli). It logs into your account, connects to an app, provides environment variables, updates remote config, creates a tunnel and provides commands to generate extensions.
+A few choices here are deliberate, since the obvious alternative is wrong:
 
-### Authenticating and querying data
+**A denormalized read model instead of querying Shopify live.** Webhooks keep a local `DraftQuote` table in sync, so every Sidekick question answers in milliseconds and doesn't spend the shop's Admin API rate limit each time a merchant asks something.
 
-To authenticate and query data you can use the `shopify` const that is exported from `/app/shopify.server.js`:
+**CORS locked to `extensions.shopifycdn.com`.** The Sidekick action routes don't accept requests from anywhere else, since they return real per-shop business data, not public information.
 
-```js
-export async function loader({ request }) {
-  const { admin } = await shopify.authenticate.admin(request);
+**OPTIONS is unauthenticated, everything else isn't.** Preflight gets a fast 204. Every actual data request goes through `authenticate.admin`, the same as any other embedded-app request — one shop's session can never read another shop's numbers.
 
-  const response = await admin.graphql(`
-    {
-      products(first: 25) {
-        nodes {
-          title
-          description
-        }
-      }
-    }`);
+**Read-only scope.** The app requests `read_draft_orders` only. It never writes to a merchant's draft orders, so the worst case of a bug is a wrong number on a dashboard, not a corrupted quote.
 
-  const {
-    data: {
-      products: { nodes },
-    },
-  } = await response.json();
+**`daysToConvert` is computed once, at webhook time.** Storing it the moment a quote completes keeps the aggregate queries index-friendly instead of doing date math over every row on every request.
 
-  return nodes;
-}
-```
+## Known limitations
 
-This template comes pre-configured with examples of:
+Documented on purpose rather than left to be discovered:
 
-1. Setting up your Shopify app in [/app/shopify.server.ts](https://github.com/Shopify/shopify-app-template-react-router/blob/main/app/shopify.server.ts)
-2. Querying data using Graphql. Please see: [/app/routes/app.\_index.tsx](https://github.com/Shopify/shopify-app-template-react-router/blob/main/app/routes/app._index.tsx).
-3. Responding to webhooks. Please see [/app/routes/webhooks.tsx](https://github.com/Shopify/shopify-app-template-react-router/blob/main/app/routes/webhooks.app.uninstalled.tsx).
-4. Using metafields, metaobjects, and declarative custom data definitions. Please see [/app/routes/app.\_index.tsx](https://github.com/Shopify/shopify-app-template-react-router/blob/main/app/routes/app._index.tsx) and [shopify.app.toml](https://github.com/Shopify/shopify-app-template-react-router/blob/main/shopify.app.toml).
+- **No historical trend.** Conversion rate resets every calendar month; there's no month-over-month comparison yet.
+- **Stale threshold (7 days) and deleted lookback (90 days) are hardcoded**, not merchant-configurable.
+- **No pagination beyond the 50-item cap** on stale/deleted lists — fine for typical quote volumes, not built for stores with thousands of open quotes.
+- **Single currency per query.** Totals aren't converted, so a shop quoting in multiple currencies will see mixed rows without conversion.
 
-Please read the [documentation for @shopify/shopify-app-react-router](https://shopify.dev/docs/api/shopify-app-react-router) to see what other API's are available.
+## Running locally
 
-## Shopify Dev MCP
+Requires Node.js 20.19+ and the Shopify CLI.
 
-This template is configured with the Shopify Dev MCP. This instructs [Cursor](https://cursor.com/), [GitHub Copilot](https://github.com/features/copilot) and [Claude Code](https://claude.com/product/claude-code) and [Google Gemini CLI](https://github.com/google-gemini/gemini-cli) to use the Shopify Dev MCP.
+\`\`\`
+npm install
+npm run setup   # prisma generate && prisma migrate deploy
+npm run dev     # shopify app dev
+\`\`\`
 
-For more information on the Shopify Dev MCP please read [the documentation](https://shopify.dev/docs/apps/build/devmcp).
+`npm run dev` handles the tunnel, environment variables and app installation on your development store.
 
 ## Deployment
 
-### Application Storage
+Deployed on Render as a web service. Required environment variables:
 
-This template uses [Prisma](https://www.prisma.io/) to store session data, by default using an [SQLite](https://www.sqlite.org/index.html) database.
-The database is defined as a Prisma schema in `prisma/schema.prisma`.
+| Variable | Notes |
+|---|---|
+| `SHOPIFY_API_KEY` | From the Partner dashboard |
+| `SHOPIFY_API_SECRET` | From the Partner dashboard — never committed |
+| `SHOPIFY_APP_URL` | Public app URL |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `NODE_ENV` | `production` |
+| `SCOPES` | `read_draft_orders` |
 
-This use of SQLite works in production if your app runs as a single instance.
-The database that works best for you depends on the data your app needs and how it is queried.
-Here’s a short list of databases providers that provide a free tier to get started:
+Build runs `npm run setup && npm run start`, so migrations apply on every deploy. Pushing to `main` triggers a deploy automatically.
 
-| Database   | Type             | Hosters                                                                                                                                                                                                                                    |
-| ---------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| MySQL      | SQL              | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-mysql), [Planet Scale](https://planetscale.com/), [Amazon Aurora](https://aws.amazon.com/rds/aurora/), [Google Cloud SQL](https://cloud.google.com/sql/docs/mysql) |
-| PostgreSQL | SQL              | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-postgresql), [Amazon Aurora](https://aws.amazon.com/rds/aurora/), [Google Cloud SQL](https://cloud.google.com/sql/docs/postgres)                                   |
-| Redis      | Key-value        | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-redis), [Amazon MemoryDB](https://aws.amazon.com/memorydb/)                                                                                                        |
-| MongoDB    | NoSQL / Document | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-mongodb), [MongoDB Atlas](https://www.mongodb.com/atlas/database)                                                                                                  |
+## Privacy and compliance
 
-To use one of these, you can use a different [datasource provider](https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#datasource) in your `schema.prisma` file, or a different [SessionStorage adapter package](https://github.com/Shopify/shopify-api-js/blob/main/packages/shopify-api/docs/guides/session-storage.md).
+The app stores only draft-order metadata — status, value, currency and timestamps — no customer names, emails, or line-item content. The three mandatory compliance webhooks (`customers/data_request`, `customers/redact`, `shop/redact`) are implemented and HMAC-verified; requests with an invalid HMAC receive a 401.
 
-### Build
+---
 
-Build the app by running the command below with the package manager of your choice:
-
-Using yarn:
-
-```shell
-yarn build
-```
-
-Using npm:
-
-```shell
-npm run build
-```
-
-Using pnpm:
-
-```shell
-pnpm run build
-```
-
-## Hosting
-
-When you're ready to set up your app in production, you can follow [our deployment documentation](https://shopify.dev/docs/apps/launch/deployment) to host it externally. From there, you have a few options:
-
-- [Google Cloud Run](https://shopify.dev/docs/apps/launch/deployment/deploy-to-google-cloud-run): This tutorial is written specifically for this example repo, and is compatible with the extended steps included in the subsequent [**Build your app**](tutorial) in the **Getting started** docs. It is the most detailed tutorial for taking a React Router-based Shopify app and deploying it to production. It includes configuring permissions and secrets, setting up a production database, and even hosting your apps behind a load balancer across multiple regions.
-- [Fly.io](https://fly.io/docs/js/shopify/): Leverages the Fly.io CLI to quickly launch Shopify apps to a single machine.
-- [Render](https://render.com/docs/deploy-shopify-app): This tutorial guides you through using Docker to deploy and install apps on a Dev store.
-- [Manual deployment guide](https://shopify.dev/docs/apps/launch/deployment/deploy-to-hosting-service): This resource provides general guidance on the requirements of deployment including environment variables, secrets, and persistent data.
-
-When you reach the step for [setting up environment variables](https://shopify.dev/docs/apps/deployment/web#set-env-vars), you also need to set the variable `NODE_ENV=production`.
-
-## Gotchas / Troubleshooting
-
-### Database tables don't exist
-
-If you get an error like:
-
-```
-The table `main.Session` does not exist in the current database.
-```
-
-Create the database for Prisma. Run the `setup` script in `package.json` using `npm`, `yarn` or `pnpm`.
-
-### Navigating/redirecting breaks an embedded app
-
-Embedded apps must maintain the user session, which can be tricky inside an iFrame. To avoid issues:
-
-1. Use `Link` from `react-router` or `@shopify/polaris`. Do not use `<a>`.
-2. Use `redirect` returned from `authenticate.admin`. Do not use `redirect` from `react-router`
-3. Use `useSubmit` from `react-router`.
-
-This only applies if your app is embedded, which it will be by default.
-
-### Webhooks: shop-specific webhook subscriptions aren't updated
-
-If you are registering webhooks in the `afterAuth` hook, using `shopify.registerWebhooks`, you may find that your subscriptions aren't being updated.
-
-Instead of using the `afterAuth` hook declare app-specific webhooks in the `shopify.app.toml` file. This approach is easier since Shopify will automatically sync changes every time you run `deploy` (e.g: `npm run deploy`). Please read these guides to understand more:
-
-1. [app-specific vs shop-specific webhooks](https://shopify.dev/docs/apps/build/webhooks/subscribe#app-specific-subscriptions)
-2. [Create a subscription tutorial](https://shopify.dev/docs/apps/build/webhooks/subscribe/get-started?deliveryMethod=https)
-
-If you do need shop-specific webhooks, keep in mind that the package calls `afterAuth` in 2 scenarios:
-
-- After installing the app
-- When an access token expires
-
-During normal development, the app won't need to re-authenticate most of the time, so shop-specific subscriptions aren't updated. To force your app to update the subscriptions, uninstall and reinstall the app. Revisiting the app will call the `afterAuth` hook.
-
-### Webhooks: Admin created webhook failing HMAC validation
-
-Webhooks subscriptions created in the [Shopify admin](https://help.shopify.com/en/manual/orders/notifications/webhooks) will fail HMAC validation. This is because the webhook payload is not signed with your app's secret key.
-
-The recommended solution is to use [app-specific webhooks](https://shopify.dev/docs/apps/build/webhooks/subscribe#app-specific-subscriptions) defined in your toml file instead. Test your webhooks by triggering events manually in the Shopify admin(e.g. Updating the product title to trigger a `PRODUCTS_UPDATE`).
-
-### Webhooks: Admin object undefined on webhook events triggered by the CLI
-
-When you trigger a webhook event using the Shopify CLI, the `admin` object will be `undefined`. This is because the CLI triggers an event with a valid, but non-existent, shop. The `admin` object is only available when the webhook is triggered by a shop that has installed the app. This is expected.
-
-Webhooks triggered by the CLI are intended for initial experimentation testing of your webhook configuration. For more information on how to test your webhooks, see the [Shopify CLI documentation](https://shopify.dev/docs/apps/tools/cli/commands#webhook-trigger).
-
-### Incorrect GraphQL Hints
-
-By default the [graphql.vscode-graphql](https://marketplace.visualstudio.com/items?itemName=GraphQL.vscode-graphql) extension for will assume that GraphQL queries or mutations are for the [Shopify Admin API](https://shopify.dev/docs/api/admin). This is a sensible default, but it may not be true if:
-
-1. You use another Shopify API such as the storefront API.
-2. You use a third party GraphQL API.
-
-If so, please update [.graphqlrc.ts](https://github.com/Shopify/shopify-app-template-react-router/blob/main/.graphqlrc.ts).
-
-### Using Defer & await for streaming responses
-
-By default the CLI uses a cloudflare tunnel. Unfortunately cloudflare tunnels wait for the Response stream to finish, then sends one chunk. This will not affect production.
-
-To test [streaming using await](https://reactrouter.com/api/components/Await#await) during local development we recommend [localhost based development](https://shopify.dev/docs/apps/build/cli-for-apps/networking-options#localhost-based-development).
-
-### "nbf" claim timestamp check failed
-
-This is because a JWT token is expired. If you are consistently getting this error, it could be that the clock on your machine is not in sync with the server. To fix this ensure you have enabled "Set time and date automatically" in the "Date and Time" settings on your computer.
-
-### Using MongoDB and Prisma
-
-If you choose to use MongoDB with Prisma, there are some gotchas in Prisma's MongoDB support to be aware of. Please see the [Prisma SessionStorage README](https://www.npmjs.com/package/@shopify/shopify-app-session-storage-prisma#mongodb).
-
-### Unable to require(`C:\...\query_engine-windows.dll.node`).
-
-Unable to require(`C:\...\query_engine-windows.dll.node`).
-The Prisma engines do not seem to be compatible with your system.
-
-query_engine-windows.dll.node is not a valid Win32 application.
-
-**Fix:** Set the environment variable:
-
-```shell
-PRISMA_CLIENT_ENGINE_TYPE=binary
-```
-
-This forces Prisma to use the binary engine mode, which runs the query engine as a separate process and can work via emulation on Windows ARM64.
-
-## Resources
-
-React Router:
-
-- [React Router docs](https://reactrouter.com/home)
-
-Shopify:
-
-- [Intro to Shopify apps](https://shopify.dev/docs/apps/getting-started)
-- [Shopify App React Router docs](https://shopify.dev/docs/api/shopify-app-react-router)
-- [Shopify CLI](https://shopify.dev/docs/apps/tools/cli)
-- [Shopify App Bridge](https://shopify.dev/docs/api/app-bridge-library).
-- [Polaris Web Components](https://shopify.dev/docs/api/app-home/polaris-web-components).
-- [App extensions](https://shopify.dev/docs/apps/app-extensions/list)
-- [Shopify Functions](https://shopify.dev/docs/api/functions)
-
-Internationalization:
-
-- [Internationalizing your app](https://shopify.dev/docs/apps/best-practices/internationalization/getting-started)
+Author: Valerio Manca — [github.com/ValerioM21](https://github.com/ValerioM21) · [LinkedIn](https://www.linkedin.com/in/valerio-manca-2690882b7)
